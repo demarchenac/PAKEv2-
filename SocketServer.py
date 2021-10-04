@@ -3,6 +3,7 @@ from threading import *
 from Crypto.Cipher import AES
 from ECPoint import ECPoint
 from Parameters import Parameters
+from EncondingHelper import EncodingHelper
 from Constants import DATABASE, PARAMETERS, SERVER_CONSTANTS, SOCKET_CONSTANTS
 
 class client(Thread):  
@@ -13,23 +14,6 @@ class client(Thread):
         self.identifier=identifier
         self.parameters=parameters
         self.start()
-        
-    def encodeArray(self,arrays):    
-        L=[]
-        for array in arrays:
-            lt=len(array)
-            L.append(lt.to_bytes(4,byteorder='big') +array)
-            
-        return b''.join(L)
-    
-    def decodeArray(self,barr):       
-        L=[]
-        i=0
-        while i<len(barr):
-            n=int.from_bytes(barr[i:i+4], byteorder='big')
-            L.append(barr[i+4:i+4+n])
-            i=i+4+n
-        return L
     
     def retrieve(self, ID):
         if ID in DATABASE.keys():
@@ -41,7 +25,7 @@ class client(Thread):
         try:
             response=self.receive()
             
-            L=self.decodeArray(response)
+            L=EncodingHelper.decodeArray(response)
             
             ubytes=L[0]
             id_p=L[1]
@@ -67,9 +51,9 @@ class client(Thread):
             
             L=[vbytes,id_q]
             
-            array=self.encodeArray(L) 
+            array= EncodingHelper.encodeArray(L) 
             
-            self.send(self.encodeArray([array]) )
+            self.send(EncodingHelper.encodeArray([array]) )
         
             
             U2=self.parameters.A.point_multiplication(K)

@@ -3,6 +3,7 @@ from threading import *
 from Crypto.Cipher import AES
 from ECPoint import ECPoint
 from Parameters import Parameters
+from EncondingHelper import EncodingHelper
 from Constants import AUTH, PARAMETERS, SERVER_CONSTANTS
 
 class SocketClient:
@@ -18,24 +19,6 @@ class SocketClient:
         self.password=password
         self.identifier=identifier
         self.parameters=parameters
-       
-    def encodeArray(self,arrays):
-        L=[]
-        for array in arrays:
-            lt=len(array)
-            L.append(lt.to_bytes(4,byteorder='big') +array)
-            
-        return b''.join(L)
-    
-    def decodeArray(self,barr):
-        L=[]
-        i=0
-        while i<len(barr):
-            n=int.from_bytes(barr[i:i+4], byteorder='big')
-            L.append(barr[i+4:i+4+n])
-            i=i+4+n
-        return L
-    
     
     def run(self):
         self.connect(self.host, self.port)
@@ -54,17 +37,17 @@ class SocketClient:
         
         L=[ubytes,id_p]
        
-        array=self.encodeArray(L) 
+        array=EncodingHelper.encodeArray(L) 
         
         
-        array=self.encodeArray([array])
+        array=EncodingHelper.encodeArray([array])
         
         
         self.send(array)
         
         arrayRec=self.receive()
         
-        L=self.decodeArray(arrayRec)
+        L=EncodingHelper.decodeArray(arrayRec)
         
         vbytes=L[0]
         id_q=L[1]
@@ -95,7 +78,7 @@ class SocketClient:
             ciphertext, tag = cipher.encrypt_and_digest(data)
             print(ciphertext)
             vnonce=(vnonce+1)& mask
-            array=self.encodeArray([tag+ciphertext])
+            array=EncodingHelper.encodeArray([tag+ciphertext])
             self.send(array)
             
             if message=='exit':
