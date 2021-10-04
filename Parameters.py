@@ -1,7 +1,7 @@
-from Crypto.Hash import SHAKE256
 import random
-from FP import FP
+from Crypto.Hash import SHAKE256
 from ECPoint import ECPoint
+from FP import FP
 
 class Parameters:
 

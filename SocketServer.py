@@ -1,28 +1,11 @@
-import socket
-from Crypto.Hash import HMAC, SHA256
+import random, socket
 from threading import *
-import secrets
-from FP import FP
+from Crypto.Cipher import AES
 from ECPoint import ECPoint
 from Parameters import Parameters
-import random
-from Crypto.Cipher import AES
+from Constants import DATABASE, PARAMETERS, SERVER_CONSTANTS, SOCKET_CONSTANTS
 
-
-serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-host = ''
-port = 8002
-print (host)
-print (port)
-serversocket.bind((host, port))
-
-BD={'Ricardo':'Ricardo'}
-
-
-
-class client(Thread):
-    
-    
+class client(Thread):  
     def __init__(self, socket, address,identifier, parameters):
         Thread.__init__(self)
         self.sock = socket
@@ -31,8 +14,7 @@ class client(Thread):
         self.parameters=parameters
         self.start()
         
-    def encodeArray(self,arrays):
-        
+    def encodeArray(self,arrays):    
         L=[]
         for array in arrays:
             lt=len(array)
@@ -40,8 +22,7 @@ class client(Thread):
             
         return b''.join(L)
     
-    def decodeArray(self,barr): 
-        
+    def decodeArray(self,barr):       
         L=[]
         i=0
         while i<len(barr):
@@ -50,15 +31,13 @@ class client(Thread):
             i=i+4+n
         return L
     
-    
     def retrieve(self, ID):
-        if ID in BD.keys():
-            return BD[ID]
+        if ID in DATABASE.keys():
+            return DATABASE[ID]
         else:
             raise ValueError('Error con id')
       
     def run(self):
-        
         try:
             response=self.receive()
             
@@ -124,8 +103,7 @@ class client(Thread):
             self.sock.close() 
             
         except:
-            self.sock.close()
-            
+            self.sock.close()    
             
     def send(self, msg):
         totalsent = 0
@@ -136,9 +114,7 @@ class client(Thread):
                 raise RuntimeError("socket connection broken")
             totalsent = totalsent + sent
 
-
     def receive(self):
-        
         bytes_recd = 0
         chunk = self.sock.recv(4)
         if chunk == b'':
@@ -147,6 +123,7 @@ class client(Thread):
         bytes_recd = 0
         msglen=int.from_bytes(chunk, byteorder='big')
         chunks = []
+
         while bytes_recd < msglen:
             chunk = self.sock.recv(min(msglen - bytes_recd, 2048))
             
@@ -155,24 +132,34 @@ class client(Thread):
             chunks.append(chunk)
             bytes_recd = bytes_recd + len(chunk)
         
-        
         return b''.join(chunks)
 
-
+def startSocketServer():
     
-serversocket.listen(40)
+    serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    serversocket.bind((SERVER_CONSTANTS['HOST'], SERVER_CONSTANTS['PORT']))
+    serversocket.listen(SERVER_CONSTANTS['POOL_SIZE'])
+    print('server started and listening')
+    
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(('', SOCKET_CONSTANTS['PORT']))
+    s.listen(SOCKET_CONSTANTS['CON_SIZE'])
 
-print ('server started and listening')
-identifier='Server'
+    param = Parameters(
+        PARAMETERS['A']['X'], 
+        PARAMETERS['A']['Y'], 
+        PARAMETERS['B']['X'], 
+        PARAMETERS['B']['Y']
+    )
 
-xa=57405313773341172191899518295435281771963996349930666421087959387814856388890
-ya=33669655811290356313238322911438248836339042889984235604869019563809171734975
-
-xb=35850454933918755761577077720947914337416491049626168726415941093274263625166
-yb=33735994584834933006143291579370680891499715161641162631920184782496067194454
-
-param=Parameters(xa,ya,xb,yb)
-nbytes=16
-while 1:
-    clientsocket, address = serversocket.accept()
-    client(socket=clientsocket, address=address,identifier=identifier,parameters=param)
+    while True:
+        clientsocket, address = serversocket.accept()
+        client(
+            socket=clientsocket, 
+            address=address,
+            identifier=SERVER_CONSTANTS['IDENTIFIER'],
+            parameters=param
+        )
+        
+if __name__ == '__main__':
+    startSocketServer()

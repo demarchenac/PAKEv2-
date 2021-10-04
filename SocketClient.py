@@ -1,17 +1,12 @@
-import socket
-from Crypto.Hash import HMAC, SHA256
+import random, socket
 from threading import *
-import secrets
-import random
-from FP import FP
+from Crypto.Cipher import AES
 from ECPoint import ECPoint
 from Parameters import Parameters
-from Crypto.Cipher import AES
+from Constants import AUTH, PARAMETERS, SERVER_CONSTANTS
 
-class P:
-  
+class SocketClient:
     def __init__(self,sock, identifier, password ,host, port, parameters):
-        
         if sock is None:
             self.sock = socket.socket(
             socket.AF_INET, socket.SOCK_STREAM)
@@ -25,7 +20,6 @@ class P:
         self.parameters=parameters
        
     def encodeArray(self,arrays):
-        
         L=[]
         for array in arrays:
             lt=len(array)
@@ -34,7 +28,6 @@ class P:
         return b''.join(L)
     
     def decodeArray(self,barr):
-        
         L=[]
         i=0
         while i<len(barr):
@@ -128,7 +121,6 @@ class P:
 
 
     def receive(self):
-        
         bytes_recd = 0
         chunk = self.sock.recv(4)
         if chunk == b'':
@@ -148,18 +140,21 @@ class P:
         
         return b''.join(chunks)
 
-host='192.168.2.13'
-port=8002
-identifier='Ricardo'
-pw='Ricardo'
+param = Parameters(
+    PARAMETERS['A']['X'], 
+    PARAMETERS['A']['Y'], 
+    PARAMETERS['B']['X'], 
+    PARAMETERS['B']['Y']
+)
 
-xa=57405313773341172191899518295435281771963996349930666421087959387814856388890
-ya=33669655811290356313238322911438248836339042889984235604869019563809171734975
+client = SocketClient(
+    None, 
+    AUTH['USER'], 
+    AUTH['PASSWORD'], 
+    SERVER_CONSTANTS['HOST'], 
+    SERVER_CONSTANTS['PORT'], 
+    param
+)
 
-xb=35850454933918755761577077720947914337416491049626168726415941093274263625166
-yb=33735994584834933006143291579370680891499715161641162631920184782496067194454
-
-param=Parameters(xa,ya,xb,yb)
-client=P(None,identifier, pw ,host,port, param)
 client.run()
 
