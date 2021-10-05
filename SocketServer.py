@@ -32,29 +32,27 @@ class client(Thread):
             id_client = L[1]
             id_client_as_string = id_client.decode("utf-8")
 
-            pwst = self.retrieve(id_client_as_string)
-
-            pw = bytes(pwst, "utf-8")
-
-            K = self.parameters.get_k(pw)
+            client_password_as_string = self.retrieve(id_client_as_string)
+            client_password = bytes(client_password_as_string, "utf-8")
+            hashed_client_password = self.parameters.get_k(client_password)
 
             beta = random.randint(1, self.parameters.q - 1)
 
             V1 = self.parameters.G.point_multiplication(beta)
-            V2 = self.parameters.B.point_multiplication(K)
-
+            V2 = self.parameters.B.point_multiplication(hashed_client_password)
             V = V1 + V2
 
-            vbytes = V.to_bytes()
+            v_as_bytes = V.to_bytes()
             id_server = bytes(self.identifier, "utf-8")
 
-            L = [vbytes, id_server]
+            L = [v_as_bytes, id_server]
 
+            # encode twice before sending any message.
             array = EncodingHelper.encodeArray(L)
+            array = EncodingHelper.encodeArray([array])
+            self.send(array)
 
-            self.send(EncodingHelper.encodeArray([array]))
-
-            U2 = self.parameters.A.point_multiplication(K)
+            U2 = self.parameters.A.point_multiplication(hashed_client_password)
 
             U = ECPoint.point_from_bytes(self.parameters.a, self.parameters.b, ubytes)
 
@@ -63,22 +61,22 @@ class client(Thread):
             wbytes = W.to_bytes()
 
             keyblob = self.parameters.H(
-                pw, id_client, id_server, ubytes, vbytes, wbytes, 45
+                client_password, id_client, id_server, ubytes, v_as_bytes, wbytes, 45
             )
 
             key = keyblob[:32]
             nonce = keyblob[32:]
             mask = int("0xffffffffffffffffffffffffff", base=16)
-            vnonce = int.from_bytes(nonce, "big")
+            nonce_as_int = int.from_bytes(nonce, "big")
             cont = True
 
             while cont:
                 data = self.receive()
                 try:
-                    nonce = vnonce.to_bytes(13, byteorder="big")
+                    nonce = nonce_as_int.to_bytes(13, byteorder="big")
                     cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
                     plaintext = cipher.decrypt_and_verify(data[16:], data[:16])
-                    vnonce = (vnonce + 1) & mask
+                    nonce_as_int = (nonce_as_int + 1) & mask
                     print(plaintext.decode("utf-8"))
                     if plaintext == "exit":
                         cont = False

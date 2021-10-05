@@ -27,57 +27,52 @@ class SocketClient:
         U1 = self.parameters.G.point_multiplication(alpha)
 
         pw = bytes(self.password, "utf-8")
-        K = self.parameters.get_k(pw)
-        U2 = self.parameters.A.point_multiplication(K)
+        hashed_pw = self.parameters.get_k(pw)
+        U2 = self.parameters.A.point_multiplication(hashed_pw)
 
         U = U1 + U2
 
-        ubytes = U.to_bytes()
+        u_as_bytes = U.to_bytes()
         id_client = bytes(self.identifier, "utf-8")
 
-        L = [ubytes, id_client]
+        L = [u_as_bytes, id_client]
 
         array = EncodingHelper.encodeArray(L)
-
         array = EncodingHelper.encodeArray([array])
-
         self.send(array)
 
         arrayRec = self.receive()
 
         L = EncodingHelper.decodeArray(arrayRec)
 
-        vbytes = L[0]
+        v_as_bytes = L[0]
         id_server = L[1]
 
-        V = ECPoint.point_from_bytes(self.parameters.a, self.parameters.b, vbytes)
-
-        V2 = self.parameters.B.point_multiplication(K)
-
+        V = ECPoint.point_from_bytes(self.parameters.a, self.parameters.b, v_as_bytes)
+        V2 = self.parameters.B.point_multiplication(hashed_pw)
         W = (V - V2).point_multiplication(alpha)
-
-        wbytes = W.to_bytes()
+        w_as_bytes = W.to_bytes()
 
         keyblob = self.parameters.H(
-            pw, id_client, id_server, ubytes, vbytes, wbytes, 45
+            pw, id_client, id_server, u_as_bytes, v_as_bytes, w_as_bytes, 45
         )
 
         key = keyblob[:32]
         nonce = keyblob[32:]
         mask = int("0xffffffffffffffffffffffffff", base=16)
         # print(keyblob.hex())
-        vnonce = int.from_bytes(nonce, "big")
+        nonce_as_int = int.from_bytes(nonce, "big")
         cont = True
         while cont:
             print("Escriba un mensaje para enviar: Si escribe 'exit' finaliza")
             message = input()
 
             data = bytes(message, "utf-8")
-            nonce = vnonce.to_bytes(13, byteorder="big")
+            nonce = nonce_as_int.to_bytes(13, byteorder="big")
             cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
             ciphertext, tag = cipher.encrypt_and_digest(data)
             print(ciphertext)
-            vnonce = (vnonce + 1) & mask
+            nonce_as_int = (nonce_as_int + 1) & mask
             array = EncodingHelper.encodeArray([tag + ciphertext])
             self.send(array)
 
