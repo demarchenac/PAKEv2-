@@ -29,10 +29,10 @@ class client(Thread):
             L = EncodingHelper.decodeArray(response)
 
             ubytes = L[0]
-            id_p = L[1]
-            id_ps = id_p.decode("utf-8")
+            id_client = L[1]
+            id_client_as_string = id_client.decode("utf-8")
 
-            pwst = self.retrieve(id_ps)
+            pwst = self.retrieve(id_client_as_string)
 
             pw = bytes(pwst, "utf-8")
 
@@ -46,9 +46,9 @@ class client(Thread):
             V = V1 + V2
 
             vbytes = V.to_bytes()
-            id_q = bytes(self.identifier, "utf-8")
+            id_server = bytes(self.identifier, "utf-8")
 
-            L = [vbytes, id_q]
+            L = [vbytes, id_server]
 
             array = EncodingHelper.encodeArray(L)
 
@@ -62,7 +62,9 @@ class client(Thread):
 
             wbytes = W.to_bytes()
 
-            keyblob = self.parameters.H(pw, id_p, id_q, ubytes, vbytes, wbytes, 45)
+            keyblob = self.parameters.H(
+                pw, id_client, id_server, ubytes, vbytes, wbytes, 45
+            )
 
             key = keyblob[:32]
             nonce = keyblob[32:]

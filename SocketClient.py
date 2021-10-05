@@ -33,9 +33,9 @@ class SocketClient:
         U = U1 + U2
 
         ubytes = U.to_bytes()
-        id_p = bytes(self.identifier, "utf-8")
+        id_client = bytes(self.identifier, "utf-8")
 
-        L = [ubytes, id_p]
+        L = [ubytes, id_client]
 
         array = EncodingHelper.encodeArray(L)
 
@@ -48,7 +48,7 @@ class SocketClient:
         L = EncodingHelper.decodeArray(arrayRec)
 
         vbytes = L[0]
-        id_q = L[1]
+        id_server = L[1]
 
         V = ECPoint.point_from_bytes(self.parameters.a, self.parameters.b, vbytes)
 
@@ -58,7 +58,9 @@ class SocketClient:
 
         wbytes = W.to_bytes()
 
-        keyblob = self.parameters.H(pw, id_p, id_q, ubytes, vbytes, wbytes, 45)
+        keyblob = self.parameters.H(
+            pw, id_client, id_server, ubytes, vbytes, wbytes, 45
+        )
 
         key = keyblob[:32]
         nonce = keyblob[32:]
