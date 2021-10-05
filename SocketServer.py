@@ -1,15 +1,20 @@
-import random, socket
-from threading import *
+import json, os, random, socket, threading
 from Crypto.Cipher import AES
 from ECPoint import ECPoint
 from Parameters import Parameters
 from EncondingHelper import EncodingHelper
-from Constants import DATABASE, PARAMETERS, SERVER_CONSTANTS, SOCKET_CONSTANTS
+from Constants import (
+    DATABASE,
+    OPERATIONS,
+    PARAMETERS,
+    SERVER_CONSTANTS,
+    SOCKET_CONSTANTS,
+)
 
 
-class client(Thread):
+class client(threading.Thread):
     def __init__(self, socket, address, identifier, parameters):
-        Thread.__init__(self)
+        threading.Thread.__init__(self)
         self.sock = socket
         self.addr = address
         self.identifier = identifier
@@ -23,13 +28,72 @@ class client(Thread):
             raise ValueError("Error con id")
 
     def run(self):
+        response = self.receive()
+        payload = EncodingHelper.decodeArray(response)
+
+        operation = payload[0].decode("utf-8")
+        print(operation)
+        if operation == OPERATIONS["PRE_REGISTER"]:
+            self.preRegister(payload)
+
+    def preRegister(self, payload):
+        [_operation, id_client_enc, pi0_enc, C_enc] = payload
+        id_client = id_client_enc.decode("utf-8")
+        pi0 = int.from_bytes(pi0_enc, "big")
+        C = int.from_bytes(C_enc, "big")
+
+        operation = OPERATIONS["SERVER_RESPONSE"]
+        parsed = f"{operation}:{id_client}"
+
+        try:
+            self.saveToDB(id_client, pi0, C)
+
+            message = [bytes(parsed, "utf-8"), b"Success"]
+
+        except Exception as E:
+            print(E)
+            message = [bytes(parsed, "utf-8"), b"Error"]
+
+        finally:
+            array = EncodingHelper.encodeArray(message)
+            array = EncodingHelper.encodeArray([array])
+            self.send(array)
+
+    def saveToDB(self, id_client, pi0, C):
+        directoryExists = os.path.exists("./.server")
+        if not directoryExists:
+            os.mkdir("./.server")
+
+        configExists = os.path.exists("./.server/config.json")
+        if configExists:
+            DB = []
+            with open("./.server/config.json", "r") as jsonDB:
+                content = jsonDB.read()
+                DB = json.loads(content)
+
+            result = next(
+                (i for i, item in enumerate(DB) if item["identifier"] == id_client),
+                None,
+            )
+            DB[result]["pi0"] = pi0
+            DB[result]["c"] = C
+
+            with open("./.server/config.json", "w") as jsonDB:
+                json.dump(DB, jsonDB, indent=2)
+
+        else:
+            row = {"identifier": id_client, "pi0": pi0, "c": C}
+            with open("./.server/config.json", "w") as jsonDB:
+                json.dump([row], jsonDB, indent=2)
+
+    def run2(self):
         try:
             response = self.receive()
 
-            L = EncodingHelper.decodeArray(response)
+            payload = EncodingHelper.decodeArray(response)
 
-            ubytes = L[0]
-            id_client = L[1]
+            u_as_bytes = payload[0]
+            id_client = payload[1]
             id_client_as_string = id_client.decode("utf-8")
 
             client_password_as_string = self.retrieve(id_client_as_string)
@@ -45,23 +109,31 @@ class client(Thread):
             v_as_bytes = V.to_bytes()
             id_server = bytes(self.identifier, "utf-8")
 
-            L = [v_as_bytes, id_server]
+            payload = [v_as_bytes, id_server]
 
             # encode twice before sending any message.
-            array = EncodingHelper.encodeArray(L)
+            array = EncodingHelper.encodeArray(payload)
             array = EncodingHelper.encodeArray([array])
             self.send(array)
 
             U2 = self.parameters.A.point_multiplication(hashed_client_password)
 
-            U = ECPoint.point_from_bytes(self.parameters.a, self.parameters.b, ubytes)
+            U = ECPoint.point_from_bytes(
+                self.parameters.a, self.parameters.b, u_as_bytes
+            )
 
             W = (U - U2).point_multiplication(beta)
 
             wbytes = W.to_bytes()
 
             keyblob = self.parameters.H(
-                client_password, id_client, id_server, ubytes, v_as_bytes, wbytes, 45
+                client_password,
+                id_client,
+                id_server,
+                u_as_bytes,
+                v_as_bytes,
+                wbytes,
+                45,
             )
 
             key = keyblob[:32]
@@ -118,7 +190,6 @@ class client(Thread):
 
 
 def startSocketServer():
-
     serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     serversocket.bind((SERVER_CONSTANTS["HOST"], SERVER_CONSTANTS["PORT"]))
     serversocket.listen(SERVER_CONSTANTS["POOL_SIZE"])
@@ -137,6 +208,7 @@ def startSocketServer():
 
     while True:
         clientsocket, address = serversocket.accept()
+        print(f"New Connection @ {address}")
         client(
             socket=clientsocket,
             address=address,

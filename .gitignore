@@ -131,3 +131,5 @@ dmypy.json
 # local env
 lab02/
 .vscode/
+.server/
+.clients/

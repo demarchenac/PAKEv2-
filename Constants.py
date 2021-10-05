@@ -23,3 +23,11 @@ SERVER_CONSTANTS = {
 }
 
 SOCKET_CONSTANTS = {"PORT": 12345, "CON_SIZE": 1}
+
+OPERATIONS = {
+    "PRE_REGISTER": "pre_registro",
+    "REGISTER": "registro",
+    "OBTAIN_IP": "obtenerIP",
+    "UPDATE_IP": "actualizar",
+    "SERVER_RESPONSE": "respuesta_de_servidor",
+}
