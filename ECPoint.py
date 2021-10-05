@@ -12,7 +12,6 @@ class ECPoint:
         return self.x == None and self.y == None
 
     def equals(self, Q):
-
         if isinstance(Q, self.__class__):
             if self.is_identity() and Q.is_identity():
                 return True
@@ -91,11 +90,9 @@ class ECPoint:
         return ECPoint(self.a, self.b, x, y)
 
     def __sub__(self, P):
-
         return self + P.inverse()
 
     def point_multiplication(self, n):
-
         if n < 0:
             n1 = -n
             P = self.inverse()
