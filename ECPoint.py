@@ -49,7 +49,7 @@ class ECPoint:
 
         else:
             if self.y == Q.y:
-                if P.y.rep == 0:
+                if self.P.y.rep == 0:
                     return ECPoint(self.a, self.b)
 
                 three = FP(3, self.a.p)
