@@ -1,4 +1,4 @@
-import random
+import math, random
 from Crypto.Hash import SHAKE256
 from ECPoint import ECPoint
 from FP import FP
@@ -26,6 +26,8 @@ class Parameters:
 
         self.q = 2 ** 256 - 2 ** 224 + 2 ** 192 - 89188191075325690597107910205041859247
         self.G = ECPoint(self.a, self.b, x, y)
+
+        self.n = math.ceil(math.log2(self.q))
 
         if xa != None and ya != None and xb != None and yb != None:
             self.A = ECPoint(self.a, self.b, FP(xa, self.p), FP(ya, self.p))
