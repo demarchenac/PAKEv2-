@@ -124,10 +124,10 @@ class SocketClient:
                 )
                 print("El formato de los comandos es comando:param1,param2,...,paramN")
                 print("Los comandos disponibles son:")
-                print("    - ayuda, help o h.")
-                print("    - registrar..")
+                print("    - ayuda, help o h. (no requiere parametros adicionales)")
+                print("    - registrar. (no requiere parametros adicionales)")
                 print("    - obtenerIP:identificador_cliente.")
-                print("    - actualizar.")
+                print("    - actualizar. (no requiere parametros adicionales)")
             else:
                 (
                     message,
