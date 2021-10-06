@@ -1,5 +1,6 @@
 import json, os, random, socket, threading, traceback
 from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
 from ECPoint import ECPoint
 from FP import FP
 from Parameters import Parameters
@@ -40,6 +41,7 @@ class client(threading.Thread):
                 if changeMode:
                     continue_listening = False
 
+            # Here we start listening to command excution
             mask = int("0xffffffffffffffffffffff", base=16)
             nonce_as_int = int.from_bytes(self.nonce, "big")
             cont = True
@@ -51,15 +53,22 @@ class client(threading.Thread):
                     cipher = AES.new(self.key, AES.MODE_GCM, nonce=nonce)
                     plaintext = cipher.decrypt_and_verify(data[16:], data[:16])
                     nonce_as_int = (nonce_as_int + 1) & mask
-                    print(plaintext.decode("utf-8"))
-                    if plaintext == "exit":
+                    as_string = plaintext.decode("utf-8")
+                    if as_string == "exit":
                         cont = False
+                    elif self.IsCommand(as_string):
+                        [command, params] = as_string.split(":", 1)
+                        self.processComand(command, params.split(","))
+                    else:
+                        print(f"<{self.client_identifier}> {as_string}")
                 except:
                     raise RuntimeError("Encryption Error")
+            print(f"[Info] conexion con {self.client_identifier} cerrada.")
             self.sock.close()
         except Exception as E:
             print("Coms error")
             print(E)
+            print(traceback.format_exc())
             self.sock.close()
 
     def processPayload(self, payload):
@@ -86,11 +95,9 @@ class client(threading.Thread):
         operation = OPERATIONS["SERVER_RESPONSE"]
         parsed = f"{operation}:{id_client}"
         C = ECPoint.point_from_bytes(self.parameters.a, self.parameters.b, C_enc)
-        print(C)
 
         try:
             self.saveToDB(id_client, pi0, C)
-
             message = [bytes(parsed, "utf-8"), b"Success"]
 
         except Exception as E:
@@ -116,11 +123,23 @@ class client(threading.Thread):
                 (i for i, item in enumerate(DB) if item["identifier"] == id_client),
                 None,
             )
-            DB[result]["pi0"] = pi0
-            DB[result]["c"] = {
-                "x": C.x.rep,
-                "y": C.y.rep,
-            }
+
+            if result is None:
+                row = {
+                    "identifier": id_client,
+                    "pi0": pi0,
+                    "c": {
+                        "x": C.x.rep,
+                        "y": C.y.rep,
+                    },
+                }
+                DB.append(row)
+            else:
+                DB[result]["pi0"] = pi0
+                DB[result]["c"] = {
+                    "x": C.x.rep,
+                    "y": C.y.rep,
+                }
 
             with open("./.server/config.json", "w") as jsonDB:
                 json.dump(DB, jsonDB, indent=4)
@@ -232,6 +251,56 @@ class client(threading.Thread):
         )
 
         return DB[index]["pi0"], C
+
+    def IsCommand(self, str):
+        return (
+            str.startswith(OPERATIONS["REGISTER"])
+            or str.startswith(OPERATIONS["OBTAIN_IP"])
+            or str.startswith(OPERATIONS["UPDATE_IP"])
+        )
+
+    def processComand(self, command, params):
+        if command == OPERATIONS["REGISTER"]:
+            k_enc = get_random_bytes(32)
+            k_mac = get_random_bytes(32)
+            print(params[0])
+            print("register")
+        elif command == OPERATIONS["OBTAIN_IP"]:
+            print("obtainIp")
+        elif command == OPERATIONS["UPDATE_IP"]:
+            print("update")
+
+        pass
+
+    def saveToAddress(self, id_client, host, k_enc, k_mac):
+        directoryExists = os.path.exists("./.server")
+        if not directoryExists:
+            os.mkdir("./.server")
+
+        hostsExists = os.path.exists("./.server/hosts.json")
+        if hostsExists:
+            HOST_DB = {}
+            with open("./.server/hosts.json", "r") as jsonDB:
+                content = jsonDB.read()
+                HOST_DB = json.loads(content)
+
+            HOST_DB[id_client]["host"] = host
+            HOST_DB[id_client]["k_enc"] = (k_enc.hex(),)  # bytes.from_hex()
+            HOST_DB[id_client]["k_mac"] = (k_mac.hex(),)
+
+            with open("./.server/config.json", "w") as jsonDB:
+                json.dump(HOST_DB, jsonDB, indent=4)
+
+        else:
+            data = {
+                "identifier": {
+                    "host": host,
+                    "k_enc": k_enc.hex(),
+                    "k_mac": k_mac.hex(),
+                },
+            }
+            with open("./.server/config.json", "w") as jsonDB:
+                json.dump(data, jsonDB, indent=4)
 
     def run2(self):
         try:

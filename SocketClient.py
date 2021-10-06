@@ -112,20 +112,36 @@ class SocketClient:
         nonce_as_int = int.from_bytes(self.nonce, "big")
         cont = True
         while cont:
-            print("Escriba un mensaje para enviar: Si escribe 'exit' finaliza")
-            message = input()
+            print(
+                "Escriba un mensaje para enviar: Si escribe 'exit' finaliza, escriba 'ayuda' para ver comandos"
+            )
+            message = input("> ")
+            print("")
+            if message == "ayuda" or message == "help" or message == "h":
+                print(
+                    "Por defecto los mensajes que tengan un separador ':' son considerados comandos."
+                )
+                print("El formato de los comandos es comando:param1,param2,...,paramN")
+                print("Los comandos disponibles son:")
+                print("    - ayuda, help o h.")
+                print("    - registrar..")
+                print("    - obtenerIP:identificador_cliente.")
+                print("    - actualizar.")
+            else:
+                isCommand, message = self.formatAsCommandIfNeeded(message)
+                data = bytes(message, "utf-8")
+                nonce = nonce_as_int.to_bytes(12, byteorder="big")
+                cipher = AES.new(self.key, AES.MODE_GCM, nonce=nonce)
+                ciphertext, tag = cipher.encrypt_and_digest(data)
+                nonce_as_int = (nonce_as_int + 1) & mask
+                array = EncodingHelper.encodeArray([tag + ciphertext])
+                self.send(array)
 
-            data = bytes(message, "utf-8")
-            nonce = nonce_as_int.to_bytes(12, byteorder="big")
-            cipher = AES.new(self.key, AES.MODE_GCM, nonce=nonce)
-            ciphertext, tag = cipher.encrypt_and_digest(data)
-            print(ciphertext)
-            nonce_as_int = (nonce_as_int + 1) & mask
-            array = EncodingHelper.encodeArray([tag + ciphertext])
-            self.send(array)
+                if isCommand:
+                    print("I should wait something")
 
-            if message == "exit":
-                cont = False
+                if message == "exit":
+                    cont = False
 
         self.sock.close()
 
@@ -166,8 +182,7 @@ class SocketClient:
 
         self.sendEnc(message)
 
-        response = self.receiveEnc()
-        payload = EncodingHelper.decodeArray(response)
+        payload = self.receiveEnc()
         isSuccesful = payload[1].decode("utf-8") == "Success"
         if isSuccesful:
             row = {"identifier": self.identifier, "pi0": pi0, "pi1": pi1}
@@ -248,6 +263,16 @@ class SocketClient:
         self.key = key
         self.nonce = nonce
 
+    def formatAsCommandIfNeeded(self, message):
+        needsFormat = message.startswith(OPERATIONS["REGISTER"]) or message.startswith(
+            OPERATIONS["UPDATE_IP"]
+        )
+
+        if needsFormat:
+            return True, f"{message}:{self.host}{self.port}"
+        else:
+            return False, message
+
     def send(self, msg):
         totalsent = 0
         msglen = len(msg)
@@ -288,8 +313,8 @@ class SocketClient:
 
 
 def startSocketClient():
-    # user = input("Usuario: ")
-    # password = input("Contraseña: ")
+    user = input("Usuario: ")
+    password = input("Contraseña: ")
     os.system("cls" if os.name == "nt" else "clear")
     print("Estableciendo conexion con el servidor...")
 
@@ -302,8 +327,8 @@ def startSocketClient():
 
     client = SocketClient(
         None,
-        AUTH["USER"],
-        AUTH["PASSWORD"],
+        user,
+        password,
         SERVER_CONSTANTS["HOST"],
         SERVER_CONSTANTS["PORT"],
         param,

@@ -1,8 +1,6 @@
 AUTH = {"USER": "Ricardo", "PASSWORD": "Ricardo"}
 
-DATABASE = {
-    "Ricardo": "Ricardo",
-}
+DATABASE = {"Ricardo": "Ricardo", "Demar": "Demar"}
 
 PARAMETERS = {
     "A": {
@@ -26,7 +24,7 @@ SOCKET_CONSTANTS = {"PORT": 12345, "CON_SIZE": 1}
 
 OPERATIONS = {
     "PRE_REGISTER": "pre_registro",
-    "REGISTER": "registro",
+    "REGISTER": "registrar",
     "OBTAIN_IP": "obtenerIP",
     "UPDATE_IP": "actualizar",
     "EXCHANGE": "intercambio",
