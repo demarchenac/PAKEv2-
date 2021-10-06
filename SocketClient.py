@@ -93,7 +93,6 @@ class SocketClient:
     def run(self):
         self.connect(self.host, self.port)
         configExists = self.verifyConfig()
-        print(f"config exists? {configExists}")
 
         if configExists:
             config = {}
@@ -106,6 +105,29 @@ class SocketClient:
 
         self.clientServerKeyExchange()
         print("[Info] Conectado al servidor")
+
+        mask = int("0xffffffffffffffffffffff", base=16)
+        # print(keyblob.hex())
+        print(f"Nonce: {self.nonce}")
+        nonce_as_int = int.from_bytes(self.nonce, "big")
+        cont = True
+        while cont:
+            print("Escriba un mensaje para enviar: Si escribe 'exit' finaliza")
+            message = input()
+
+            data = bytes(message, "utf-8")
+            nonce = nonce_as_int.to_bytes(12, byteorder="big")
+            cipher = AES.new(self.key, AES.MODE_GCM, nonce=nonce)
+            ciphertext, tag = cipher.encrypt_and_digest(data)
+            print(ciphertext)
+            nonce_as_int = (nonce_as_int + 1) & mask
+            array = EncodingHelper.encodeArray([tag + ciphertext])
+            self.send(array)
+
+            if message == "exit":
+                cont = False
+
+        self.sock.close()
 
     def connect(self, host, port):
         self.sock.connect((host, port))
@@ -220,7 +242,7 @@ class SocketClient:
 
         keyblob = self.parameters.Hk(4, [k], n=44)
         key = keyblob[:32]
-        nonce = int.from_bytes(keyblob[32:], "big")
+        nonce = keyblob[32:]
 
         self.client_identifier = id_client
         self.key = key

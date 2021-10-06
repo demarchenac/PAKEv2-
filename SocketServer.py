@@ -36,7 +36,27 @@ class client(threading.Thread):
             continue_listening = True
             while continue_listening:
                 payload = self.receiveEnc()
-                self.processPayload(payload)
+                changeMode = self.processPayload(payload)
+                if changeMode:
+                    continue_listening = False
+
+            mask = int("0xffffffffffffffffffffff", base=16)
+            nonce_as_int = int.from_bytes(self.nonce, "big")
+            cont = True
+
+            while cont:
+                data = self.receive()
+                try:
+                    nonce = nonce_as_int.to_bytes(12, byteorder="big")
+                    cipher = AES.new(self.key, AES.MODE_GCM, nonce=nonce)
+                    plaintext = cipher.decrypt_and_verify(data[16:], data[:16])
+                    nonce_as_int = (nonce_as_int + 1) & mask
+                    print(plaintext.decode("utf-8"))
+                    if plaintext == "exit":
+                        cont = False
+                except:
+                    raise RuntimeError("Encryption Error")
+            self.sock.close()
         except Exception as E:
             print("Coms error")
             print(E)
@@ -51,8 +71,12 @@ class client(threading.Thread):
 
         if len(payload) > 0 and operation == OPERATIONS["PRE_REGISTER"]:
             self.preRegister(payload)
+            return False
         elif len(payload) > 0 and operation == OPERATIONS["EXCHANGE"]:
             self.serverClientExchangeKeys(payload)
+            return True
+        else:
+            return False
 
     def preRegister(self, payload):
         [_operation, id_client_enc, pi0_enc, C_enc] = payload
@@ -174,7 +198,7 @@ class client(threading.Thread):
 
             keyblob = self.parameters.Hk(4, [k], n=44)
             key = keyblob[:32]
-            nonce = int.from_bytes(keyblob[32:], "big")
+            nonce = keyblob[32:]
 
             self.client_identifier = id_client
             self.key = key
@@ -261,14 +285,14 @@ class client(threading.Thread):
 
             key = keyblob[:32]
             nonce = keyblob[32:]
-            mask = int("0xffffffffffffffffffffffffff", base=16)
+            mask = int("0xffffffffffffffffffffff", base=16)
             nonce_as_int = int.from_bytes(nonce, "big")
             cont = True
 
             while cont:
                 data = self.receive()
                 try:
-                    nonce = nonce_as_int.to_bytes(13, byteorder="big")
+                    nonce = nonce_as_int.to_bytes(12, byteorder="big")
                     cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
                     plaintext = cipher.decrypt_and_verify(data[16:], data[:16])
                     nonce_as_int = (nonce_as_int + 1) & mask
