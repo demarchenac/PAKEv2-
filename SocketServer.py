@@ -1,6 +1,7 @@
-import json, os, random, socket, threading
+import json, os, random, socket, threading, traceback
 from Crypto.Cipher import AES
 from ECPoint import ECPoint
+from FP import FP
 from Parameters import Parameters
 from EncondingHelper import EncodingHelper
 from Constants import (
@@ -19,6 +20,9 @@ class client(threading.Thread):
         self.addr = address
         self.identifier = identifier
         self.parameters = parameters
+        self.client_identifier = None
+        self.key = None
+        self.nonce = None
         self.start()
 
     def retrieve(self, ID):
@@ -28,22 +32,37 @@ class client(threading.Thread):
             raise ValueError("Error con id")
 
     def run(self):
-        response = self.receive()
-        payload = EncodingHelper.decodeArray(response)
+        try:
+            continue_listening = True
+            while continue_listening:
+                payload = self.receiveEnc()
+                self.processPayload(payload)
+        except Exception as E:
+            print("Coms error")
+            print(E)
+            self.sock.close()
+
+    def processPayload(self, payload):
+        if len(payload) == 0:
+            print("Empty payload received")
+            return
 
         operation = payload[0].decode("utf-8")
-        print(operation)
-        if operation == OPERATIONS["PRE_REGISTER"]:
+
+        if len(payload) > 0 and operation == OPERATIONS["PRE_REGISTER"]:
             self.preRegister(payload)
+        elif len(payload) > 0 and operation == OPERATIONS["EXCHANGE"]:
+            self.serverClientExchangeKeys(payload)
 
     def preRegister(self, payload):
         [_operation, id_client_enc, pi0_enc, C_enc] = payload
         id_client = id_client_enc.decode("utf-8")
         pi0 = int.from_bytes(pi0_enc, "big")
-        C = int.from_bytes(C_enc, "big")
 
         operation = OPERATIONS["SERVER_RESPONSE"]
         parsed = f"{operation}:{id_client}"
+        C = ECPoint.point_from_bytes(self.parameters.a, self.parameters.b, C_enc)
+        print(C)
 
         try:
             self.saveToDB(id_client, pi0, C)
@@ -55,9 +74,7 @@ class client(threading.Thread):
             message = [bytes(parsed, "utf-8"), b"Error"]
 
         finally:
-            array = EncodingHelper.encodeArray(message)
-            array = EncodingHelper.encodeArray([array])
-            self.send(array)
+            self.sendEnc(message)
 
     def saveToDB(self, id_client, pi0, C):
         directoryExists = os.path.exists("./.server")
@@ -76,15 +93,121 @@ class client(threading.Thread):
                 None,
             )
             DB[result]["pi0"] = pi0
-            DB[result]["c"] = C
+            DB[result]["c"] = {
+                "x": C.x.rep,
+                "y": C.y.rep,
+            }
 
             with open("./.server/config.json", "w") as jsonDB:
-                json.dump(DB, jsonDB, indent=2)
+                json.dump(DB, jsonDB, indent=4)
 
         else:
-            row = {"identifier": id_client, "pi0": pi0, "c": C}
+            row = {
+                "identifier": id_client,
+                "pi0": pi0,
+                "c": {
+                    "x": C.x.rep,
+                    "y": C.y.rep,
+                },
+            }
             with open("./.server/config.json", "w") as jsonDB:
-                json.dump([row], jsonDB, indent=2)
+                json.dump([row], jsonDB, indent=4)
+
+    def serverClientExchangeKeys(self, payload):
+        try:
+            [_operation, u_as_bytes, id_client_enc] = payload
+
+            id_client = id_client_enc.decode("utf-8")
+
+            U = ECPoint.point_from_bytes(
+                self.parameters.a, self.parameters.b, u_as_bytes
+            )
+            isUValid = self.parameters.isECPointValid(U)
+            if not isUValid:
+                print("ECPoint was not valid")
+                return
+
+            pi0, C = self.searchDB(id_client)
+            beta = random.randint(1, self.parameters.q - 1)
+            V1 = self.parameters.G.point_multiplication(beta)
+            V2 = self.parameters.B.point_multiplication(pi0)
+            V = V1 + V2
+
+            W = (U - self.parameters.A.point_multiplication(pi0)).point_multiplication(
+                beta
+            )
+            d = C.point_multiplication(beta)
+
+            parsed = f'{OPERATIONS["SERVER_RESPONSE"]}:{id_client}'
+            v_as_bytes = V.to_bytes()
+            message = [
+                bytes(parsed, "utf-8"),
+                V.to_bytes(),
+                bytes(self.identifier, "utf-8"),
+            ]
+
+            self.sendEnc(message)
+
+            W_as_bytes = W.to_bytes()
+            d_as_bytes = d.to_bytes()
+
+            k = self.parameters.Hk(
+                1,
+                [
+                    pi0.to_bytes(32, byteorder="big"),
+                    u_as_bytes,
+                    v_as_bytes,
+                    W_as_bytes,
+                    d_as_bytes,
+                ],
+            )
+
+            t_2a = self.parameters.Hk(2, [k])
+            t_2b = self.parameters.Hk(3, [k])
+
+            [t_1b] = self.receiveEnc()
+            self.sendEnc([t_2a])
+
+            if t_1b != t_2b:
+                print("T_1b validation failed")
+                return
+
+            keyblob = self.parameters.Hk(4, [k], n=44)
+            key = keyblob[:32]
+            nonce = int.from_bytes(keyblob[32:], "big")
+
+            self.client_identifier = id_client
+            self.key = key
+            self.nonce = nonce
+
+            print(f"[Info] Se ha establecido una conexion con {id_client}")
+
+        except Exception as E:
+            print(E)
+            print(traceback.format_exc())
+
+    def searchDB(self, id_client):
+        DB = []
+        with open("./.server/config.json", "r") as jsonDB:
+            content = jsonDB.read()
+            DB = json.loads(content)
+
+        index = next(
+            (i for i, item in enumerate(DB) if item["identifier"] == id_client),
+            None,
+        )
+
+        Cx = FP(DB[index]["c"]["x"], self.parameters.p)
+        Cy = FP(DB[index]["c"]["y"], self.parameters.p)
+
+        C = ECPoint(
+            self.parameters.a,
+            self.parameters.b,
+            Cx,
+            Cy,
+        )
+
+        return DB[index]["pi0"], C
 
     def run2(self):
         try:
@@ -187,6 +310,16 @@ class client(threading.Thread):
             bytes_recd = bytes_recd + len(chunk)
 
         return b"".join(chunks)
+
+    def sendEnc(self, msg):
+        array = EncodingHelper.encodeArray(msg)
+        array = EncodingHelper.encodeArray([array])
+        self.send(array)
+
+    def receiveEnc(self):
+        response = self.receive()
+        payload = EncodingHelper.decodeArray(response)
+        return payload
 
 
 def startSocketServer():

@@ -43,6 +43,18 @@ class Parameters:
         c = random.randint(1, param.q - 1)
         return param.G.point_multiplication(c)
 
+    def isECPointValid(self, point):
+        # Verify U
+        y_r = point.y ** 2
+        x_r = (
+            (point.x ** 3) + (self.a * point.x) + self.b
+        )  # since a=-3, then we just +(a*x_u)
+
+        areEqual = x_r == y_r
+        isNone = ECPoint(self.a, self.b, x=x_r, y=y_r).is_identity()
+
+        return areEqual and not isNone
+
     def get_k(self, pw, n=256):
         h_256 = SHAKE256.new()
         string = b"fixedString"
@@ -52,7 +64,17 @@ class Parameters:
         k = int.from_bytes(h_256.read(n), "big")
         return k % self.q
 
-    def H(self, pw, idp, idq, ubytes, vbytes, wbytes, n=256):
+    def Hk(self, k, params, n=32):
+        h_256 = SHAKE256.new()
+        fixed = bytes(f"fixedString#{k}", 'utf-8')
+
+        h_256.update(fixed)
+
+        [h_256.update(param) for param in params]
+
+        return h_256.read(n)
+
+    def H(self, pw, idp, idq, ubytes, vbytes, wbytes, n=32):
         h_256 = SHAKE256.new()
         h_256.update(pw)
         h_256.update(idp)

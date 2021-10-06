@@ -25,6 +25,9 @@ class SocketClient:
         self.identifier = identifier
         self.parameters = parameters
         self.config = {}
+        self.server_identifier = None
+        self.key = None
+        self.nonce = None
 
     def run2(self):
         self.connect(self.host, self.port)
@@ -90,6 +93,8 @@ class SocketClient:
     def run(self):
         self.connect(self.host, self.port)
         configExists = self.verifyConfig()
+        print(f"config exists? {configExists}")
+
         if configExists:
             config = {}
             with open(f"./.clients/{self.identifier}.json", "r") as jsonDB:
@@ -99,8 +104,8 @@ class SocketClient:
         else:
             self.preRegister()
 
+        self.clientServerKeyExchange()
         print("[Info] Conectado al servidor")
-        print(self.config)
 
     def connect(self, host, port):
         self.sock.connect((host, port))
@@ -137,23 +142,89 @@ class SocketClient:
             C.to_bytes(),
         ]
 
-        message = EncodingHelper.encodeArray(message)
-        message = EncodingHelper.encodeArray([message])
-        self.send(message)
+        self.sendEnc(message)
 
-        response = self.receive()
+        response = self.receiveEnc()
         payload = EncodingHelper.decodeArray(response)
-        operation = payload[0].decode("utf-8")
-        if OPERATIONS["SERVER_RESPONSE"] in operation and self.identifier in operation:
-            isSuccesful = payload[1].decode("utf-8") == "Success"
-            if isSuccesful:
-                row = {"identifier": self.identifier, "pi0": pi0, "pi1": pi1}
-                with open(f"./.clients/{self.identifier}.json", "w") as jsonDB:
-                    json.dump(row, jsonDB, indent=2)
-                self.config["pi0"] = pi0
-                self.config["pi1"] = pi1
-            else:
-                print("Error de conexion")
+        isSuccesful = payload[1].decode("utf-8") == "Success"
+        if isSuccesful:
+            row = {"identifier": self.identifier, "pi0": pi0, "pi1": pi1}
+            with open(f"./.clients/{self.identifier}.json", "w") as jsonDB:
+                json.dump(row, jsonDB, indent=2)
+            self.config["pi0"] = pi0
+            self.config["pi1"] = pi1
+        else:
+            print("Error de conexion")
+
+    def clientServerKeyExchange(self):
+        hasItems = bool(self.config)
+        if not hasItems:
+            print("La configuracion no fue cargada correctamente")
+            return
+
+        alpha = random.randint(1, self.parameters.q - 1)
+        U1 = self.parameters.G.point_multiplication(alpha)
+
+        password_as_bytes = bytes(self.password, "utf-8")
+        hashed_password = self.parameters.get_k(password_as_bytes)
+        U2 = self.parameters.A.point_multiplication(self.config["pi0"])
+
+        U = U1 + U2
+
+        operation = bytes(OPERATIONS["EXCHANGE"], "utf-8")
+        u_as_bytes = U.to_bytes()
+        id_client = bytes(self.identifier, "utf-8")
+
+        message = [operation, u_as_bytes, id_client]
+
+        self.sendEnc(message)
+        [_op, V_enc, id_server] = self.receiveEnc()
+        V = ECPoint.point_from_bytes(self.parameters.a, self.parameters.b, V_enc)
+        isVValid = self.parameters.isECPointValid(V)
+
+        if not isVValid:
+            print("Point V is not valid")
+            return
+
+        W = (
+            V - self.parameters.B.point_multiplication(self.config["pi0"])
+        ).point_multiplication(alpha)
+
+        d = (
+            V - self.parameters.B.point_multiplication(self.config["pi0"])
+        ).point_multiplication(self.config["pi1"])
+
+        W_as_bytes = W.to_bytes()
+        d_as_bytes = d.to_bytes()
+
+        k = self.parameters.Hk(
+            1,
+            [
+                self.config["pi0"].to_bytes(32, byteorder="big"),
+                u_as_bytes,
+                V_enc,
+                W_as_bytes,
+                d_as_bytes,
+            ],
+        )
+
+        t_1a = self.parameters.Hk(2, [k])
+        t_1b = self.parameters.Hk(3, [k])
+
+        self.sendEnc([t_1b])
+
+        [t_2a] = self.receiveEnc()
+        if t_2a != t_1a:
+            print("T_2a validation failed")
+            return
+
+        keyblob = self.parameters.Hk(4, [k], n=44)
+        key = keyblob[:32]
+        nonce = int.from_bytes(keyblob[32:], "big")
+
+        self.client_identifier = id_client
+        self.key = key
+        self.nonce = nonce
 
     def send(self, msg):
         totalsent = 0
@@ -183,10 +254,20 @@ class SocketClient:
 
         return b"".join(chunks)
 
+    def sendEnc(self, msg):
+        array = EncodingHelper.encodeArray(msg)
+        array = EncodingHelper.encodeArray([array])
+        self.send(array)
+
+    def receiveEnc(self):
+        response = self.receive()
+        payload = EncodingHelper.decodeArray(response)
+        return payload
+
 
 def startSocketClient():
-    user = input("Usuario: ")
-    password = input("Contraseña: ")
+    # user = input("Usuario: ")
+    # password = input("Contraseña: ")
     os.system("cls" if os.name == "nt" else "clear")
     print("Estableciendo conexion con el servidor...")
 
@@ -199,8 +280,8 @@ def startSocketClient():
 
     client = SocketClient(
         None,
-        user,
-        password,
+        AUTH["USER"],
+        AUTH["PASSWORD"],
         SERVER_CONSTANTS["HOST"],
         SERVER_CONSTANTS["PORT"],
         param,

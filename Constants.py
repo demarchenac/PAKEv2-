@@ -29,5 +29,8 @@ OPERATIONS = {
     "REGISTER": "registro",
     "OBTAIN_IP": "obtenerIP",
     "UPDATE_IP": "actualizar",
+    "EXCHANGE": "intercambio",
     "SERVER_RESPONSE": "respuesta_de_servidor",
+    "CLOSE": "cerrar",
+    "EXIT": "salir",
 }
