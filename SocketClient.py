@@ -28,6 +28,8 @@ class SocketClient:
         self.server_identifier = None
         self.key = None
         self.nonce = None
+        self.k_enc = None
+        self.k_mac = None
 
     def run2(self):
         self.connect(self.host, self.port)
@@ -108,7 +110,6 @@ class SocketClient:
 
         mask = int("0xffffffffffffffffffffff", base=16)
         # print(keyblob.hex())
-        print(f"Nonce: {self.nonce}")
         nonce_as_int = int.from_bytes(self.nonce, "big")
         cont = True
         while cont:
@@ -128,7 +129,11 @@ class SocketClient:
                 print("    - obtenerIP:identificador_cliente.")
                 print("    - actualizar.")
             else:
-                isCommand, message = self.formatAsCommandIfNeeded(message)
+                (
+                    message,
+                    isCommand,
+                    command,
+                ) = self.formatAsCommandIfNeeded(message)
                 data = bytes(message, "utf-8")
                 nonce = nonce_as_int.to_bytes(12, byteorder="big")
                 cipher = AES.new(self.key, AES.MODE_GCM, nonce=nonce)
@@ -138,7 +143,21 @@ class SocketClient:
                 self.send(array)
 
                 if isCommand:
-                    print("I should wait something")
+                    data = self.receive()
+                    nonce = nonce_as_int.to_bytes(12, byteorder="big")
+                    cipher = AES.new(self.key, AES.MODE_GCM, nonce=nonce)
+                    plaintext = cipher.decrypt_and_verify(data[16:], data[:16])
+                    nonce_as_int = (nonce_as_int + 1) & mask
+                    as_string = plaintext.decode("utf-8")
+                    if command == OPERATIONS["REGISTER"]:
+                        [k_enc_hex, k_mac_hex] = as_string.split(",")
+                        self.k_enc = bytes.fromhex(k_enc_hex)
+                        self.k_mac = bytes.fromhex(k_mac_hex)
+                        print("")
+                        print(
+                            f"[Info] El host de {self.identifier} ha sido registrado en {self.server_identifier} satisfactoriamente!"
+                        )
+                        print("")
 
                 if message == "exit":
                     cont = False
@@ -259,7 +278,7 @@ class SocketClient:
         key = keyblob[:32]
         nonce = keyblob[32:]
 
-        self.client_identifier = id_client
+        self.server_identifier = id_server.decode("utf-8")
         self.key = key
         self.nonce = nonce
 
@@ -269,9 +288,9 @@ class SocketClient:
         )
 
         if needsFormat:
-            return True, f"{message}:{self.host}{self.port}"
+            return f"{message}:{self.host}:{self.port}", True, message
         else:
-            return False, message
+            return message, False, None
 
     def send(self, msg):
         totalsent = 0

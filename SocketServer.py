@@ -57,8 +57,17 @@ class client(threading.Thread):
                     if as_string == "exit":
                         cont = False
                     elif self.IsCommand(as_string):
+                        print(as_string)
                         [command, params] = as_string.split(":", 1)
-                        self.processComand(command, params.split(","))
+                        message = self.processComand(command, params.split(","))
+                        data = bytes(message, "utf-8")
+                        nonce = nonce_as_int.to_bytes(12, byteorder="big")
+                        cipher = AES.new(self.key, AES.MODE_GCM, nonce=nonce)
+                        ciphertext, tag = cipher.encrypt_and_digest(data)
+                        nonce_as_int = (nonce_as_int + 1) & mask
+                        array = EncodingHelper.encodeArray([tag + ciphertext])
+                        self.send(array)
+
                     else:
                         print(f"<{self.client_identifier}> {as_string}")
                 except:
@@ -260,17 +269,21 @@ class client(threading.Thread):
         )
 
     def processComand(self, command, params):
+        message = None
         if command == OPERATIONS["REGISTER"]:
             k_enc = get_random_bytes(32)
             k_mac = get_random_bytes(32)
-            print(params[0])
-            print("register")
+            self.saveToAddress(self.client_identifier, params[0], k_enc, k_mac)
+            message = f"{k_enc.hex()},{k_mac.hex()}"
+
         elif command == OPERATIONS["OBTAIN_IP"]:
             print("obtainIp")
+            message = "obtainIP"
         elif command == OPERATIONS["UPDATE_IP"]:
             print("update")
+            message = "update"
 
-        pass
+        return message
 
     def saveToAddress(self, id_client, host, k_enc, k_mac):
         directoryExists = os.path.exists("./.server")
@@ -284,22 +297,23 @@ class client(threading.Thread):
                 content = jsonDB.read()
                 HOST_DB = json.loads(content)
 
+            HOST_DB[id_client] = {}
             HOST_DB[id_client]["host"] = host
             HOST_DB[id_client]["k_enc"] = (k_enc.hex(),)  # bytes.from_hex()
             HOST_DB[id_client]["k_mac"] = (k_mac.hex(),)
 
-            with open("./.server/config.json", "w") as jsonDB:
+            with open("./.server/hosts.json", "w") as jsonDB:
                 json.dump(HOST_DB, jsonDB, indent=4)
 
         else:
             data = {
-                "identifier": {
+                f"{id_client}": {
                     "host": host,
                     "k_enc": k_enc.hex(),
                     "k_mac": k_mac.hex(),
                 },
             }
-            with open("./.server/config.json", "w") as jsonDB:
+            with open("./.server/hosts.json", "w") as jsonDB:
                 json.dump(data, jsonDB, indent=4)
 
     def run2(self):
